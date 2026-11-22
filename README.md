@@ -2,7 +2,7 @@
 
 Dagelijks bijgewerkte lijst van vaste flitsers in Nederland, voor de Flitsapp.
 
-- `osm-nl.json` – vaste flitsers.
+- `osm-nl.json` – vaste flitsers. Zonder maxspeed-label is de limiet aangevuld met die van de weg (`"maxSpeedSrc":"road"`; bij twijfel tussen wegen de laagste).
 - `osm-nl-trajecten.json` – trajectcontroles (begin, einde, limiet, wegdelen, camera-punten).
 - `tools/FetchCameras.java` en `tools/FetchSections.java` – halen de data op bij OpenStreetMap (Overpass) en zetten die om.
 - `.github/workflows/update-data.yml` – draait het script elke nacht en commit alleen bij wijzigingen.
