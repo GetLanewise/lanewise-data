@@ -2,13 +2,14 @@
 
 Dagelijks bijgewerkte lijst van vaste flitsers in Nederland, voor de Flitsapp.
 
-- `osm-nl.json` – de data. De app downloadt alleen dit bestand.
-- `tools/FetchCameras.java` – haalt de data op bij OpenStreetMap (Overpass) en zet die om.
+- `osm-nl.json` – vaste flitsers.
+- `osm-nl-trajecten.json` – trajectcontroles (begin, einde, limiet, wegdelen, camera-punten).
+- `tools/FetchCameras.java` en `tools/FetchSections.java` – halen de data op bij OpenStreetMap (Overpass) en zetten die om.
 - `.github/workflows/update-data.yml` – draait het script elke nacht en commit alleen bij wijzigingen.
 
 ## Bron en licentie van de data
 
-De data in `osm-nl.json` komt uit OpenStreetMap:
+De data in `osm-nl.json` en `osm-nl-trajecten.json` komt uit OpenStreetMap:
 **© OpenStreetMap-bijdragers**, beschikbaar onder de
 [Open Database License (ODbL) 1.0](https://opendatacommons.org/licenses/odbl/1-0/).
 Zie https://www.openstreetmap.org/copyright.
