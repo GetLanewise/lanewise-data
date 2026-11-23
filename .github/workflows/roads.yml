@@ -44,9 +44,15 @@ jobs:
       - name: Wegenbestand maken
         run: java -Xmx6g tools/FetchRoads.java osm-nl-wegen.bin.gz --geojsonseq wegen.geojsonseq
 
+      - name: Spoorwegovergangen
+        run: |
+          osmium tags-filter nl.osm.pbf n/railway=level_crossing -o overwegen.osm.pbf
+          osmium export overwegen.osm.pbf -f geojsonseq --geometry-types=point -o overwegen.geojsonseq
+          java tools/FetchRoads.java osm-nl-overwegen.json.gz --crossings overwegen.geojsonseq
+
       - name: Publiceren als release-bestand
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view wegen >/dev/null 2>&1 || gh release create wegen --title "Wegenkaart (maximumsnelheden)" --notes "Wekelijks bijgewerkt uit OpenStreetMap (© OpenStreetMap-bijdragers, ODbL). Gebruikt door de Flitsapp."
-          gh release upload wegen osm-nl-wegen.bin.gz --clobber
+          gh release upload wegen osm-nl-wegen.bin.gz osm-nl-overwegen.json.gz --clobber

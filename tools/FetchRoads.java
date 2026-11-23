@@ -62,6 +62,7 @@ public class FetchRoads {
             System.err.println("     of: java FetchRoads.java <uitvoer.bin.gz> --overpass s,w,n,e              (klein testgebied)");
             System.exit(2);
         }
+        if (args[1].equals("--crossings")) { crossings(Path.of(args[2]), Path.of(args[0])); return; }
         Map<Long, Way> ways = new HashMap<>();
         Map<String, Integer> conds = new HashMap<>();
         double[] area;
@@ -116,6 +117,36 @@ public class FetchRoads {
             }
         }
         System.out.println("GeoJSON-regels: " + lines + ", overgeslagen: " + skipped);
+    }
+
+
+    /**
+     * Spoorwegovergangen (railway=level_crossing, uit osmium als geojsonseq-punten) naar een klein
+     * JSON-bestand: {"format":1,...,"crossings":[[lat,lon],...]} (gzip).
+     */
+    static void crossings(Path in, Path out) throws Exception {
+        StringBuilder sb = new StringBuilder();
+        int n = 0;
+        try (var r = Files.newBufferedReader(in, StandardCharsets.UTF_8)) {
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (!line.isEmpty() && line.charAt(0) == '\u001e') line = line.substring(1);
+                if (line.isBlank()) continue;
+                Map<?, ?> f = (Map<?, ?>) new Json(line).value();
+                Map<?, ?> g = (Map<?, ?>) f.get("geometry");
+                if (g == null || !"Point".equals(g.get("type"))) continue;
+                List<?> c = (List<?>) g.get("coordinates");
+                double lon = ((Number) c.get(0)).doubleValue(), lat = ((Number) c.get(1)).doubleValue();
+                if (lat < LAT_MIN || lat > LAT_MAX || lon < LON_MIN || lon > LON_MAX) continue;
+                if (n++ > 0) sb.append(',');
+                sb.append(String.format(Locale.ROOT, "[%.6f,%.6f]", lat, lon));
+            }
+        }
+        if (n < 500) fail("Te weinig spoorwegovergangen (" + n + ")");
+        String json = "{\"format\":1,\"source\":\"osm\",\"attribution\":\"© OpenStreetMap-bijdragers\",\"license\":\"ODbL-1.0\",\"generatedAt\":"
+                + System.currentTimeMillis() + ",\"count\":" + n + ",\"crossings\":[" + sb + "]}";
+        try (var gz = new GZIPOutputStream(Files.newOutputStream(out))) { gz.write(json.getBytes(StandardCharsets.UTF_8)); }
+        System.out.println("Spoorwegovergangen: " + n + " -> " + out);
     }
 
     // ---------------- ophalen ----------------
