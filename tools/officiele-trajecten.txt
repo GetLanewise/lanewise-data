@@ -1,0 +1,34 @@
+# Officiële trajectcontroles (Ministerie van Justitie en Veiligheid, "Trajectcontroles 1e tertiaal 2025",
+# rijksoverheid.nl, gepubliceerd 12-06-2025). Bijwerken als er een nieuwe versie verschijnt.
+# Formaat: wegnummer | omschrijving | status (actief / gestopt = geen boetes meer in de laatste periode)
+A4   | Hoofddorp (beide richtingen)                         | actief
+A13  | Rotterdam                                            | actief
+A20  | Rotterdam                                            | actief
+A12  | Den Haag - Voorburg                                  | actief
+A12  | Utrecht hoofdrijbaan en parallelrijbaan              | actief
+A10  | West (Amstelveen - Zaandam)                          | actief
+A58  | Bergen op Zoom - Roosendaal                          | gestopt
+A2   | Utrecht - Amsterdam                                  | actief
+A4   | Leidschendam (Den Haag - Amsterdam)                  | actief
+A2   | Maastricht (A2 en N2)                                | actief
+N62  | Westerscheldetunnel                                  | actief
+N230 | Lageweide - Overvecht                                | actief
+N351 | Oldeberkoop - Nijeholtpade                           | actief
+N381 | Drachten - Donkerbroek                               | actief
+N414 | Eembrugge - Bunschoten                               | actief
+N706 | Almere Hout - N302                                   | actief
+N201 | Legmeerdijk - Zijdelweg                              | actief
+N205 | Schipholweg - Kruisweg                               | actief
+N333 | Blokzijl - Steenwijk                                 | actief
+N787 | Eerbeek - Brummen                                    | actief
+N9   | Burgervlotbrug - St Maartensvlotbrug                 | actief
+N11  | Leiden - Alphen aan den Rijn                         | actief
+N275 | Koningslust - Nederweert                             | actief
+N564 | Kazerneweg - Havenweg                                | actief
+N277 | Vredepeel - Ysselsteyn                               | actief
+N270 | Ysselsteyn - Venray                                  | actief
+N253 | St Anna ter Muiden - Heileweg                        | actief
+N260 | Rugdijk - Stokhasseltlaan                            | actief
+N256 | Colijnsplaat - Zierikzee                             | actief
+N639 | Baarle-Nassau - Chaam                                | actief
+N325 | Westervoortsedijk - Huissen                          | actief

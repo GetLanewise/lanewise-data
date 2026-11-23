@@ -63,7 +63,7 @@ public class FetchSections {
 
     record Section(long id, String name, String ref, int maxSpeed, String conditional, Integer lengthM,
                    List<LatLon> from, List<LatLon> to, List<Long> devices, List<List<LatLon>> lines,
-                   Long updatedAt, List<Integer> tunnels) {}
+                   Long updatedAt, List<Integer> tunnels, String road) {}
 
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
@@ -78,6 +78,7 @@ public class FetchSections {
         System.out.println("Trajecten ontvangen: " + sections.size());
         List<String> report = new ArrayList<>();
         sections = check(sections, report);
+        compareOfficial(sections, report);
         writeSummary(report);
         if (sections.size() < MIN_SECTIONS) {
             fail("Te weinig trajecten (" + sections.size() + " < " + MIN_SECTIONS + "). Bestaand bestand blijft staan.");
@@ -148,6 +149,7 @@ public class FetchSections {
         }
         Map<Long, List<Long>> ways = new HashMap<>();
         java.util.Set<Long> tunnelWays = new java.util.HashSet<>();
+        Map<Long, String> wayRoad = new HashMap<>();
         NodeList wl = doc.getElementsByTagName("way");
         for (int i = 0; i < wl.getLength(); i++) {
             Element w = (Element) wl.item(i);
@@ -159,6 +161,7 @@ public class FetchSections {
             for (int j = 0; j < wt.getLength(); j++) {
                 Element t = (Element) wt.item(j);
                 if (t.getAttribute("k").equals("tunnel") && !t.getAttribute("v").equals("no")) tunnelWays.add(Long.parseLong(w.getAttribute("id")));
+                if (t.getAttribute("k").equals("ref")) wayRoad.put(Long.parseLong(w.getAttribute("id")), t.getAttribute("v").replace(" ", "").split(";")[0]);
             }
         }
 
@@ -181,6 +184,7 @@ public class FetchSections {
             List<Long> devices = new ArrayList<>();
             List<List<LatLon>> lines = new ArrayList<>();
             List<Integer> tunnels = new ArrayList<>();
+            Map<String, Integer> roadCount = new HashMap<>();
             NodeList ml = r.getElementsByTagName("member");
             for (int j = 0; j < ml.getLength(); j++) {
                 Element m = (Element) ml.item(j);
@@ -201,6 +205,8 @@ public class FetchSections {
                         if (p != null) line.add(p);
                     }
                     if (line.size() >= 2) {
+                        String rd = wayRoad.get(ref);
+                        if (rd != null) roadCount.merge(rd, 1, Integer::sum);
                         if (tunnelWays.contains(ref)) tunnels.add(lines.size());
                         lines.add(line);
                     }
@@ -210,15 +216,19 @@ public class FetchSections {
                 System.err.println("Overgeslagen (geen begin of eind): relation " + r.getAttribute("id"));
                 continue;
             }
+            // Wegnummer (bijv. "N333") = meest voorkomende ref van de wegdelen. Geen naam? Dan "Trajectcontrole N333".
+            String road = roadCount.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).orElse("");
+            String name = tags.getOrDefault("name", "");
+            if (name.isBlank() && !road.isEmpty()) name = "Trajectcontrole " + road;
             result.add(new Section(
                     Long.parseLong(r.getAttribute("id")),
-                    tags.getOrDefault("name", ""),
+                    name,
                     tags.getOrDefault("ref", ""),
                     max,
                     tags.get("maxspeed:conditional"),
                     parseLength(tags.get("length")),
                     from, to, devices, lines,
-                    parseTime(r.getAttribute("timestamp")), tunnels));
+                    parseTime(r.getAttribute("timestamp")), tunnels, road));
         }
         result.sort((a, b) -> Long.compare(a.id(), b.id()));
         return result;
@@ -286,6 +296,7 @@ public class FetchSections {
             sb.append("{\"id\":\"osm:relation/").append(s.id()).append('"');
             sb.append(",\"name\":").append(str(s.name()));
             sb.append(",\"ref\":").append(str(s.ref()));
+            if (!s.road().isEmpty()) sb.append(",\"road\":").append(str(s.road()));
             sb.append(",\"maxSpeed\":").append(s.maxSpeed());
             if (s.conditional() != null) sb.append(",\"maxSpeedConditional\":").append(str(s.conditional()));
             if (s.lengthM() != null) sb.append(",\"lengthM\":").append(s.lengthM());
@@ -335,6 +346,42 @@ public class FetchSections {
      * wegdelen, onmogelijke lengte, buiten NL) wordt weggelaten en gemeld. Een opgegeven lengte die
      * flink afwijkt van de getekende weg wordt alleen gemeld (de app vergelijkt zelf al met GPS).
      */
+
+    /**
+     * Vergelijkt met de officiële lijst (tools/officiele-trajecten.txt). Alleen een verslag: ontbrekende
+     * trajecten moeten in OpenStreetMap worden ingetekend (begin- en eindpunt precies bij de camera's).
+     */
+    static void compareOfficial(List<Section> sections, List<String> report) {
+        Path list = Path.of("tools/officiele-trajecten.txt");
+        if (!Files.exists(list)) return;
+        try {
+            java.util.Set<String> osmRoads = new java.util.TreeSet<>();
+            for (Section s : sections) {
+                if (!s.road().isEmpty()) osmRoads.add(s.road().toUpperCase(Locale.ROOT));
+                Matcher m = Pattern.compile("(?<![A-Za-z0-9])([AN][0-9]{1,3})(?![0-9])").matcher(s.name());
+                while (m.find()) osmRoads.add(m.group(1).toUpperCase(Locale.ROOT));
+            }
+            java.util.Set<String> official = new java.util.TreeSet<>();
+            List<String> missing = new ArrayList<>(), stoppedButPresent = new ArrayList<>();
+            for (String line : Files.readAllLines(list, StandardCharsets.UTF_8)) {
+                if (line.isBlank() || line.startsWith("#")) continue;
+                String[] f = line.split("[|]");
+                String road = f[0].trim().toUpperCase(Locale.ROOT), what = f.length > 1 ? f[1].trim() : "", status = f.length > 2 ? f[2].trim() : "actief";
+                official.add(road);
+                boolean present = osmRoads.contains(road) || (road.equals("A2") && osmRoads.contains("N2"));
+                if (status.equals("actief") && !present) missing.add(road + " (" + what + ")");
+                if (status.equals("gestopt") && present) stoppedButPresent.add(road + " (" + what + ")");
+            }
+            List<String> extra = new ArrayList<>();
+            for (String r : osmRoads) if (!official.contains(r) && !(r.equals("N2") && official.contains("A2"))) extra.add(r);
+            report.add("Officiële lijst: " + missing.size() + " actieve trajecten ontbreken in OpenStreetMap" + (missing.isEmpty() ? "" : ": " + String.join(", ", missing)));
+            if (!stoppedButPresent.isEmpty()) report.add("Gestopt volgens de officiële lijst maar nog in OSM: " + String.join(", ", stoppedButPresent));
+            if (!extra.isEmpty()) report.add("In OSM maar niet in de officiële lijst (nieuw of verouderd?): " + String.join(", ", extra));
+        } catch (Exception e) {
+            report.add("Officiële lijst niet te lezen: " + e.getMessage());
+        }
+    }
+
     static List<Section> check(List<Section> in, List<String> report) {
         List<Section> out = new ArrayList<>();
         int removed = 0;
