@@ -120,7 +120,7 @@ public class FetchSections {
                     HttpRequest req = HttpRequest.newBuilder(URI.create(server))
                             .timeout(Duration.ofSeconds(180))
                             .header("Content-Type", "application/x-www-form-urlencoded")
-                            .header("User-Agent", "Flitsapp-data/1.0 (github.com/flitsapp-nl/flitsapp-data)")
+                            .header("User-Agent", "Lanewise-data/1.0 (github.com/GetLanewise/lanewise-data)")
                             .POST(HttpRequest.BodyPublishers.ofString(body))
                             .build();
                     HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());

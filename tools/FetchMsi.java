@@ -152,7 +152,7 @@ public class FetchMsi {
 
     static byte[] download() throws Exception {
         var http = java.net.http.HttpClient.newBuilder().followRedirects(java.net.http.HttpClient.Redirect.NORMAL).build();
-        var req = java.net.http.HttpRequest.newBuilder(java.net.URI.create(URL)).header("User-Agent", "flitsapp-data/1 (wekelijks)").build();
+        var req = java.net.http.HttpRequest.newBuilder(java.net.URI.create(URL)).header("User-Agent", "lanewise-data/1 (wekelijks)").build();
         for (int i = 0; i < 4; i++) {
             try {
                 var r = http.send(req, java.net.http.HttpResponse.BodyHandlers.ofByteArray());

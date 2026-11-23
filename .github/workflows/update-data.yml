@@ -42,7 +42,7 @@ jobs:
             echo "Geen wijzigingen."
             exit 0
           fi
-          git config user.name "flitsapp-data-bot"
+          git config user.name "lanewise-data-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Flitserdata bijgewerkt ($(date -u +%Y-%m-%d))"
           git push
