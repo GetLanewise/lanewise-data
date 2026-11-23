@@ -53,7 +53,7 @@ public class FetchSections {
             "rel[\"enforcement\"=\"average_speed\"](area.nl);",
             "out meta;",
             ">;",
-            "out skel qt;");
+            "out body qt;"); // body: ook de tags van de wegdelen (tunnel)
 
     static final int MIN_SECTIONS = 40;
     static final double MAX_DROP = 0.30;
@@ -63,7 +63,7 @@ public class FetchSections {
 
     record Section(long id, String name, String ref, int maxSpeed, String conditional, Integer lengthM,
                    List<LatLon> from, List<LatLon> to, List<Long> devices, List<List<LatLon>> lines,
-                   Long updatedAt) {}
+                   Long updatedAt, List<Integer> tunnels) {}
 
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
@@ -147,6 +147,7 @@ public class FetchSections {
                     new LatLon(Double.parseDouble(n.getAttribute("lat")), Double.parseDouble(n.getAttribute("lon"))));
         }
         Map<Long, List<Long>> ways = new HashMap<>();
+        java.util.Set<Long> tunnelWays = new java.util.HashSet<>();
         NodeList wl = doc.getElementsByTagName("way");
         for (int i = 0; i < wl.getLength(); i++) {
             Element w = (Element) wl.item(i);
@@ -154,6 +155,11 @@ public class FetchSections {
             NodeList nds = w.getElementsByTagName("nd");
             for (int j = 0; j < nds.getLength(); j++) refs.add(Long.parseLong(((Element) nds.item(j)).getAttribute("ref")));
             ways.put(Long.parseLong(w.getAttribute("id")), refs);
+            NodeList wt = w.getElementsByTagName("tag");
+            for (int j = 0; j < wt.getLength(); j++) {
+                Element t = (Element) wt.item(j);
+                if (t.getAttribute("k").equals("tunnel") && !t.getAttribute("v").equals("no")) tunnelWays.add(Long.parseLong(w.getAttribute("id")));
+            }
         }
 
         List<Section> result = new ArrayList<>();
@@ -174,6 +180,7 @@ public class FetchSections {
             List<LatLon> from = new ArrayList<>(), to = new ArrayList<>();
             List<Long> devices = new ArrayList<>();
             List<List<LatLon>> lines = new ArrayList<>();
+            List<Integer> tunnels = new ArrayList<>();
             NodeList ml = r.getElementsByTagName("member");
             for (int j = 0; j < ml.getLength(); j++) {
                 Element m = (Element) ml.item(j);
@@ -193,7 +200,10 @@ public class FetchSections {
                         LatLon p = nodes.get(nd);
                         if (p != null) line.add(p);
                     }
-                    if (line.size() >= 2) lines.add(line);
+                    if (line.size() >= 2) {
+                        if (tunnelWays.contains(ref)) tunnels.add(lines.size());
+                        lines.add(line);
+                    }
                 }
             }
             if (from.isEmpty() || to.isEmpty()) {
@@ -208,7 +218,7 @@ public class FetchSections {
                     tags.get("maxspeed:conditional"),
                     parseLength(tags.get("length")),
                     from, to, devices, lines,
-                    parseTime(r.getAttribute("timestamp"))));
+                    parseTime(r.getAttribute("timestamp")), tunnels));
         }
         result.sort((a, b) -> Long.compare(a.id(), b.id()));
         return result;
@@ -292,7 +302,13 @@ public class FetchSections {
                 if (j > 0) sb.append(',');
                 sb.append(pts(s.lines().get(j)));
             }
-            sb.append("]}").append(i < sections.size() - 1 ? ",\n" : "\n");
+            sb.append("]");
+            if (!s.tunnels().isEmpty()) {
+                sb.append(",\"tunnels\":[");
+                for (int j = 0; j < s.tunnels().size(); j++) { if (j > 0) sb.append(','); sb.append(s.tunnels().get(j)); }
+                sb.append(']');
+            }
+            sb.append("}").append(i < sections.size() - 1 ? ",\n" : "\n");
         }
         return sb.append("]\n}\n").toString();
     }
