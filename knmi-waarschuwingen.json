@@ -1,0 +1,10 @@
+{
+"format":1,
+"source":"knmi",
+"attribution":"Bron: KNMI (bewerkt: alleen huidige en komende waarschuwingen)",
+"license":"CC-BY-4.0",
+"generatedAt":1795420320067,
+"warnings":[
+
+]
+}

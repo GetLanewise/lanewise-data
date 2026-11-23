@@ -1,0 +1,47 @@
+# Haalt elke 20 minuten de actuele weerswaarschuwingen van het KNMI op (CC BY 4.0, "Bron: KNMI")
+# en commit knmi-waarschuwingen.json alleen als er iets veranderd is. Sleutel: GitHub-secret
+# KNMI_API_KEY; zonder secret gebruikt het script de openbare anonieme KNMI-sleutel (gedeeld,
+# dus soms even geen update). Mislukt het, dan blijft het oude bestand staan.
+name: Weerswaarschuwingen bijwerken
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+jobs:
+  weather:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: KNMI-waarschuwingen ophalen
+        env:
+          KNMI_API_KEY: ${{ secrets.KNMI_API_KEY }}
+        run: java tools/FetchWeather.java knmi-waarschuwingen.json
+
+      - name: Committen als er iets veranderd is
+        run: |
+          git add knmi-waarschuwingen.json
+          if git diff --cached --quiet; then
+            echo "Geen wijzigingen."
+            exit 0
+          fi
+          git config user.name "flitsapp-data-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Weerswaarschuwingen bijgewerkt ($(date -u +%Y-%m-%dT%H:%MZ))"
+          git pull --rebase
+          git push
