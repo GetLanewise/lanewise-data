@@ -34,7 +34,8 @@ import org.w3c.dom.NodeList;
  * devices om die punten niet óók als losse flitser te melden.
  *
  * Veiligheid: het bestaande bestand wordt NIET overschreven als alle servers falen, als er
- * minder dan MIN_SECTIONS trajecten binnenkomen, of als het aantal meer dan MAX_DROP daalt.
+ * minder dan MIN_SECTIONS trajecten binnenkomen, als het aantal meer dan MAX_DROP daalt, of als
+ * meer dan MAX_INVALID van de trajecten de datacontrole niet doorstaat.
  *
  * Testen zonder internet: geef een opgeslagen Overpass-XML mee als tweede argument.
  */
@@ -75,6 +76,9 @@ public class FetchSections {
 
         List<Section> sections = parse(xml);
         System.out.println("Trajecten ontvangen: " + sections.size());
+        List<String> report = new ArrayList<>();
+        sections = check(sections, report);
+        writeSummary(report);
         if (sections.size() < MIN_SECTIONS) {
             fail("Te weinig trajecten (" + sections.size() + " < " + MIN_SECTIONS + "). Bestaand bestand blijft staan.");
         }
@@ -301,6 +305,78 @@ public class FetchSections {
         } catch (Exception e) {
             return 0;
         }
+    }
+
+    // ---------------- Datacontrole ----------------
+
+    static final double LAT_MIN = 50.70, LAT_MAX = 53.60, LON_MIN = 3.30, LON_MAX = 7.25;
+    static final double MIN_LENGTH_M = 300, MAX_LENGTH_M = 60_000;
+    /** Gaat er meer dan dit deel mis, dan is de bron waarschijnlijk stuk: niets publiceren. */
+    static final double MAX_INVALID = 0.10;
+
+    /**
+     * Controleert de trajecten vóór publicatie. Een traject dat niet klopt (onzinnige limiet, geen
+     * wegdelen, onmogelijke lengte, buiten NL) wordt weggelaten en gemeld. Een opgegeven lengte die
+     * flink afwijkt van de getekende weg wordt alleen gemeld (de app vergelijkt zelf al met GPS).
+     */
+    static List<Section> check(List<Section> in, List<String> report) {
+        List<Section> out = new ArrayList<>();
+        int removed = 0;
+        for (Section s : in) {
+            String why = null;
+            double drawn = 0;
+            for (List<LatLon> line : s.lines())
+                for (int i = 1; i < line.size(); i++) drawn += distanceM(line.get(i - 1), line.get(i));
+            if (s.maxSpeed() < 15 || s.maxSpeed() > 130 || s.maxSpeed() % 5 != 0) why = "onzinnige limiet " + s.maxSpeed();
+            else if (s.lines().isEmpty()) why = "geen wegdelen";
+            else if (drawn < MIN_LENGTH_M || drawn > MAX_LENGTH_M) why = "onmogelijke lengte " + Math.round(drawn) + " m";
+            else {
+                for (LatLon p : concat(s.from(), s.to()))
+                    if (!(p.lat() >= LAT_MIN && p.lat() <= LAT_MAX && p.lon() >= LON_MIN && p.lon() <= LON_MAX)) why = "buiten NL";
+            }
+            if (why != null) {
+                removed++;
+                report.add("weggelaten: relation/" + s.id() + " " + s.name() + " (" + why + ")");
+                continue;
+            }
+            if (s.lengthM() != null && Math.abs(s.lengthM() - drawn) > 0.2 * drawn) {
+                report.add(String.format(Locale.ROOT, "let op: relation/%d %s, opgegeven lengte %d m maar getekend %d m",
+                        s.id(), s.name(), s.lengthM(), Math.round(drawn)));
+            }
+            out.add(s);
+        }
+        report.add(0, "Controle trajecten: " + in.size() + " binnen, " + removed + " weggelaten -> " + out.size() + " over");
+        if (in.size() > 0 && removed > in.size() * MAX_INVALID) {
+            writeSummary(report);
+            fail("Meer dan " + Math.round(MAX_INVALID * 100) + "% van de trajecten klopt niet, bron lijkt stuk. Bestaand bestand blijft staan.");
+        }
+        return out;
+    }
+
+    static List<LatLon> concat(List<LatLon> a, List<LatLon> b) {
+        List<LatLon> r = new ArrayList<>(a);
+        r.addAll(b);
+        return r;
+    }
+
+    static double distanceM(LatLon p, LatLon q) {
+        double dLat = Math.toRadians(q.lat() - p.lat()), dLon = Math.toRadians(q.lon() - p.lon());
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(p.lat())) * Math.cos(Math.toRadians(q.lat())) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return 6_371_000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    /** Verslag naar de console en, op GitHub, naar de samenvatting van de run. */
+    static void writeSummary(List<String> report) {
+        report.stream().limit(40).forEach(System.out::println);
+        String summary = System.getenv("GITHUB_STEP_SUMMARY");
+        if (summary == null) return;
+        try {
+            StringBuilder sb = new StringBuilder("### Trajectcontroles\n\n");
+            report.stream().limit(40).forEach(l -> sb.append("- ").append(l).append('\n'));
+            Files.writeString(Path.of(summary), sb.toString(), StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (Exception ignored) { }
     }
 
     static void fail(String message) {

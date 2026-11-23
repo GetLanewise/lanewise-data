@@ -26,7 +26,9 @@ import java.util.regex.Pattern;
  * Veiligheid: het bestaande bestand wordt NIET overschreven als
  *  - alle Overpass-servers falen,
  *  - er minder dan MIN_CAMERAS flitsers binnenkomen,
- *  - of het aantal meer dan MAX_DROP lager is dan in het vorige bestand.
+ *  - het aantal meer dan MAX_DROP lager is dan in het vorige bestand,
+ *  - of meer dan MAX_INVALID van de flitsers de datacontrole niet doorstaat (buiten NL, dubbel,
+ *    onzinnige limiet). Losse fouten worden verbeterd of weggelaten en gemeld in het verslag.
  * Zo krijgen gebruikers nooit een lege of halve database door een storing.
  *
  * Testen zonder internet: geef een opgeslagen Overpass-CSV mee als tweede argument.
@@ -68,6 +70,10 @@ public class FetchCameras {
                 ? RoadSpeeds.estimate(cameras, Files.readString(Path.of(args[2])))
                 : RoadSpeeds.fetchAndEstimate(cameras, args.length >= 2);
         System.out.println("Ontvangen: " + cameras.size() + " flitsers");
+        roadSpeeds = new java.util.HashMap<>(roadSpeeds);
+        List<String> report = new ArrayList<>();
+        cameras = check(cameras, roadSpeeds, report);
+        writeSummary(report);
 
         if (cameras.size() < MIN_CAMERAS) {
             fail("Te weinig flitsers (" + cameras.size() + " < " + MIN_CAMERAS + "), oud bestand blijft staan");
@@ -208,6 +214,101 @@ public class FetchCameras {
         } catch (IOException e) {
             return 0;
         }
+    }
+
+
+    // ---------------- Datacontrole ----------------
+
+    /** Ruim om Nederland heen (incl. Waddeneilanden, Zuid-Limburg en Zeeuws-Vlaanderen). */
+    static final double LAT_MIN = 50.70, LAT_MAX = 53.60, LON_MIN = 3.30, LON_MAX = 7.25;
+    /** Gaat er meer dan dit deel mis, dan is de bron waarschijnlijk stuk: niets publiceren. */
+    static final double MAX_INVALID = 0.05;
+    /** Twee flitsers op (vrijwel) exact dezelfde plek met dezelfde (of geen) richting = dubbel ingevoerd.
+     *  Bewust klein: paren op 2-3 m zijn vaak echte losse palen (per rijstrook of richting); die
+     *  laten we staan, de app voegt ze bij het waarschuwen toch samen. */
+    static final double DUPLICATE_M = 0.5;
+
+    /** Bestaande Nederlandse limieten (km/u). Alles daarbuiten is een invoerfout in OSM. */
+    static boolean validSpeed(Integer kmh) {
+        return kmh != null && kmh >= 15 && kmh <= 130 && kmh % 5 == 0;
+    }
+
+    /**
+     * Controleert de flitsers vóór publicatie. Verbetert wat te verbeteren is (onzinnige limiet weg,
+     * dubbele flitser weg), verwijdert wat niet klopt (buiten NL) en stopt als te veel niet klopt.
+     */
+    static List<Camera> check(List<Camera> in, Map<Long, Integer> roadSpeeds, List<String> report) {
+        List<Camera> out = new ArrayList<>();
+        int outside = 0, badSpeed = 0, badRoad = 0;
+        for (Camera c : in) {
+            if (!(c.lat() >= LAT_MIN && c.lat() <= LAT_MAX && c.lon() >= LON_MIN && c.lon() <= LON_MAX)) {
+                outside++;
+                report.add("buiten NL weggelaten: node/" + c.id());
+                continue;
+            }
+            Camera fixed = c;
+            if (c.maxSpeed() != null && !validSpeed(c.maxSpeed())) {
+                badSpeed++;
+                report.add("onzinnige maxspeed " + c.maxSpeed() + " weggelaten: node/" + c.id());
+                fixed = new Camera(c.id(), c.lat(), c.lon(), null, c.direction(), c.updatedAt());
+            }
+            out.add(fixed);
+        }
+        for (var it = roadSpeeds.entrySet().iterator(); it.hasNext(); ) {
+            var e = it.next();
+            if (!validSpeed(e.getValue())) { badRoad++; it.remove(); }
+        }
+        // Dubbel ingevoerd: zelfde plek en zelfde richting. Twee richtingen op één paal blijven allebei.
+        out.sort((a, b) -> Long.compare(a.id(), b.id()));
+        List<Camera> unique = new ArrayList<>();
+        int duplicates = 0;
+        for (Camera c : out) {
+            boolean dup = false;
+            for (Camera u : unique) {
+                if (distanceM(c.lat(), c.lon(), u.lat(), u.lon()) < DUPLICATE_M && sameDirection(c.direction(), u.direction())) {
+                    dup = true;
+                    report.add("dubbel weggelaten: node/" + c.id() + " (zelfde als node/" + u.id() + ")");
+                    break;
+                }
+            }
+            if (dup) duplicates++; else unique.add(c);
+        }
+        int invalid = outside + duplicates;
+        report.add(0, String.format(Locale.ROOT,
+                "Controle flitsers: %d binnen, %d buiten NL, %d dubbel, %d onzinnige limiet, %d onzinnige weg-limiet -> %d over",
+                in.size(), outside, duplicates, badSpeed, badRoad, unique.size()));
+        if (in.size() > 0 && (invalid + badSpeed) > in.size() * MAX_INVALID) {
+            writeSummary(report);
+            fail("Meer dan " + Math.round(MAX_INVALID * 100) + "% van de flitsers klopt niet, bron lijkt stuk. Oud bestand blijft staan.");
+        }
+        return unique;
+    }
+
+    static boolean sameDirection(Double a, Double b) {
+        if (a == null || b == null) return a == null && b == null;
+        double d = Math.abs(a - b) % 360;
+        return Math.min(d, 360 - d) < 30;
+    }
+
+    static double distanceM(double lat1, double lon1, double lat2, double lon2) {
+        double dLat = Math.toRadians(lat2 - lat1), dLon = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return 6_371_000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    /** Verslag naar de console en, op GitHub, naar de samenvatting van de run. */
+    static void writeSummary(List<String> report) {
+        report.stream().limit(40).forEach(System.out::println);
+        if (report.size() > 40) System.out.println("... en nog " + (report.size() - 40));
+        String summary = System.getenv("GITHUB_STEP_SUMMARY");
+        if (summary == null) return;
+        try {
+            StringBuilder sb = new StringBuilder("### Flitsers\n\n");
+            report.stream().limit(40).forEach(l -> sb.append("- ").append(l).append('\n'));
+            Files.writeString(Path.of(summary), sb.toString(), StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (IOException ignored) { }
     }
 
     static void fail(String message) {
