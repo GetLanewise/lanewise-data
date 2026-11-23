@@ -29,7 +29,7 @@ jobs:
 
       - name: Nederland downloaden (Geofabrik)
         run: |
-          for url in https://download.geofabrik.de/europe/netherlands-latest.osm.pbf https://download.openstreetmap.fr/extracts/europe/netherlands-latest.osm.pbf; do
+          for url in https://download.openstreetmap.fr/extracts/europe/netherlands-latest.osm.pbf https://download.geofabrik.de/europe/netherlands/netherlands-latest.osm.pbf; do
             if curl -sSfL --retry 5 --retry-delay 30 --retry-all-errors --connect-timeout 30 --max-time 1200 --speed-limit 200000 --speed-time 90 -A "lanewise-data/1 (wekelijks)" -o nl.osm.pbf "$url"; then echo "Gedownload van $url"; break; fi
           done
           test -s nl.osm.pbf
