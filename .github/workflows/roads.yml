@@ -50,12 +50,18 @@ jobs:
           osmium export overwegen.osm.pbf -f geojsonseq --geometry-types=point -o overwegen.geojsonseq
           java tools/FetchRoads.java osm-nl-overwegen.json.gz --crossings overwegen.geojsonseq
 
+      - name: Afmetingsbeperkingen (hoogte, gewicht, breedte, lengte)
+        run: |
+          osmium tags-filter nl.osm.pbf nw/maxheight nw/maxheight:physical nw/maxweight nw/maxwidth nw/maxwidth:physical nw/maxlength nw/maxaxleload -o beperkingen.osm.pbf
+          osmium export beperkingen.osm.pbf -f geojsonseq --geometry-types=linestring,point -o beperkingen.geojsonseq
+          java -Xmx3g tools/FetchRoads.java osm-nl-beperkingen.json.gz --restrictions beperkingen.geojsonseq
+
       - name: Publiceren als release-bestand
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view wegen >/dev/null 2>&1 || gh release create wegen --title "Wegenkaart (maximumsnelheden)" --notes "Wekelijks bijgewerkt uit OpenStreetMap (© OpenStreetMap-bijdragers, ODbL). Gebruikt door de Flitsapp."
-          gh release upload wegen osm-nl-wegen.bin.gz osm-nl-overwegen.json.gz --clobber
+          gh release upload wegen osm-nl-wegen.bin.gz osm-nl-overwegen.json.gz osm-nl-beperkingen.json.gz --clobber
 
       - name: Matrixborden (NDW, CC0) - aparte release
         env:

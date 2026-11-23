@@ -63,6 +63,8 @@ public class FetchRoads {
             System.exit(2);
         }
         if (args[1].equals("--crossings")) { crossings(Path.of(args[2]), Path.of(args[0])); return; }
+        if (args[1].equals("--restrictions")) { restrictions(Path.of(args[2]), Path.of(args[0]), false); return; }
+        if (args[1].equals("--restrictions-overpass")) { restrictions(Path.of(args[2]), Path.of(args[0]), true); return; }
         Map<Long, Way> ways = new HashMap<>();
         Map<String, Integer> conds = new HashMap<>();
         double[] area;
@@ -147,6 +149,115 @@ public class FetchRoads {
                 + System.currentTimeMillis() + ",\"count\":" + n + ",\"crossings\":[" + sb + "]}";
         try (var gz = new GZIPOutputStream(Files.newOutputStream(out))) { gz.write(json.getBytes(StandardCharsets.UTF_8)); }
         System.out.println("Spoorwegovergangen: " + n + " -> " + out);
+    }
+
+    // ---------------- afmetingsbeperkingen ----------------
+
+    /** OSM-sleutel → korte soort in het bestand (h = hoogte m, w = gewicht t, b = breedte m, l = lengte m, a = aslast t). */
+    static final Map<String, String> RESTRICTION_KEYS = new java.util.LinkedHashMap<>(Map.of(
+            "maxheight", "h", "maxheight:physical", "h", "maxweight", "w", "maxwidth", "b", "maxwidth:physical", "b",
+            "maxlength", "l", "maxaxleload", "a"));
+
+    static final java.util.Set<String> HIGHWAYS_SET = java.util.Set.of(HIGHWAYS.split("[|]"));
+
+    /**
+     * Maximale hoogte, gewicht, breedte, lengte en aslast op wegen (en losse hoogtebalken), voor
+     * vrachtwagens, campers en aanhangers. Uitvoer: {"format":1,...,"items":[{"k":"h","v":3.2,"ow":0,"p":[[lat,lon],...]}]}.
+     * Invoer: osmium geojsonseq (productie) of Overpass-JSON met "out tags geom" (test, [overpass]=true).
+     */
+    static void restrictions(Path in, Path out, boolean overpass) throws Exception {
+        List<String> items = new ArrayList<>();
+        Map<String, Integer> perKind = new java.util.TreeMap<>();
+        int unparsed = 0;
+        List<Map.Entry<Map<String, String>, List<double[]>>> feats = new ArrayList<>();
+        if (overpass) {
+            Map<?, ?> root = (Map<?, ?>) new Json(Files.readString(in)).value();
+            for (Object o : (List<?>) root.get("elements")) {
+                Map<?, ?> e = (Map<?, ?>) o;
+                Map<String, String> tags = new HashMap<>();
+                Map<?, ?> t = (Map<?, ?>) e.get("tags");
+                if (t != null) t.forEach((k, v) -> tags.put(k.toString(), String.valueOf(v)));
+                List<double[]> pts = new ArrayList<>();
+                if (e.get("geometry") instanceof List<?> gl) {
+                    for (Object g : gl) { Map<?, ?> m = (Map<?, ?>) g; pts.add(new double[]{((Number) m.get("lat")).doubleValue(), ((Number) m.get("lon")).doubleValue()}); }
+                } else if (e.get("lat") != null) {
+                    pts.add(new double[]{((Number) e.get("lat")).doubleValue(), ((Number) e.get("lon")).doubleValue()});
+                }
+                feats.add(Map.entry(tags, pts));
+            }
+        } else {
+            try (var r = Files.newBufferedReader(in, StandardCharsets.UTF_8)) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    if (!line.isEmpty() && line.charAt(0) == '\u001e') line = line.substring(1);
+                    if (line.isBlank()) continue;
+                    Map<?, ?> f = (Map<?, ?>) new Json(line).value();
+                    Map<?, ?> g = (Map<?, ?>) f.get("geometry");
+                    Map<?, ?> p = (Map<?, ?>) f.get("properties");
+                    if (g == null || p == null) continue;
+                    Map<String, String> tags = new HashMap<>();
+                    p.forEach((k, v) -> { if (v != null) tags.put(k.toString(), v.toString()); });
+                    List<double[]> pts = new ArrayList<>();
+                    if ("LineString".equals(g.get("type"))) {
+                        for (Object c : (List<?>) g.get("coordinates")) { List<?> xy = (List<?>) c; pts.add(new double[]{((Number) xy.get(1)).doubleValue(), ((Number) xy.get(0)).doubleValue()}); }
+                    } else if ("Point".equals(g.get("type"))) {
+                        List<?> c = (List<?>) g.get("coordinates");
+                        pts.add(new double[]{((Number) c.get(1)).doubleValue(), ((Number) c.get(0)).doubleValue()});
+                    }
+                    feats.add(Map.entry(tags, pts));
+                }
+            }
+        }
+        for (var f : feats) {
+            Map<String, String> tags = f.getKey();
+            List<double[]> pts = f.getValue();
+            if (pts.isEmpty()) continue;
+            boolean isWay = pts.size() >= 2;
+            // Alleen wegen voor gemotoriseerd verkeer, of losse hoogtebalken/portalen (punten).
+            if (isWay && (tags.get("highway") == null || !HIGHWAYS_SET.contains(tags.get("highway")))) continue;
+            double[] a = pts.get(0);
+            if (a[0] < LAT_MIN || a[0] > LAT_MAX || a[1] < LON_MIN || a[1] > LON_MAX) continue;
+            Map<String, Double> best = new HashMap<>();
+            for (var k : RESTRICTION_KEYS.entrySet()) {
+                String raw = tags.get(k.getKey());
+                if (raw == null) continue;
+                Double v = restrictionValue(raw, k.getValue());
+                if (v == null) { unparsed++; continue; }
+                best.merge(k.getValue(), v, Math::min);
+            }
+            if (best.isEmpty()) continue;
+            String ow = "yes".equals(tags.get("oneway")) || "motorway".equals(tags.get("highway")) ? "1" : "-1".equals(tags.get("oneway")) ? "-1" : "0";
+            List<double[]> line = isWay ? simplify(pts) : pts;
+            StringBuilder p = new StringBuilder();
+            for (double[] q : line) { if (p.length() > 0) p.append(','); p.append(String.format(Locale.ROOT, "[%.6f,%.6f]", q[0], q[1])); }
+            for (var e : best.entrySet()) {
+                items.add(String.format(Locale.ROOT, "{\"k\":\"%s\",\"v\":%.2f,\"ow\":%s,\"p\":[%s]}", e.getKey(), e.getValue(), ow, p));
+                perKind.merge(e.getKey(), 1, Integer::sum);
+            }
+        }
+        String json = "{\"format\":1,\"source\":\"osm\",\"attribution\":\"© OpenStreetMap-bijdragers\",\"license\":\"ODbL-1.0\",\"generatedAt\":"
+                + System.currentTimeMillis() + ",\"count\":" + items.size() + ",\"items\":[\n" + String.join(",\n", items) + "\n]}";
+        System.out.println("Beperkingen: " + items.size() + " " + perKind + ", zonder getal (default/none): " + unparsed);
+        if (!overpass && items.size() < 2000) fail("Te weinig beperkingen (" + items.size() + "), bestand blijft staan");
+        try (var gz = new GZIPOutputStream(Files.newOutputStream(out))) { gz.write(json.getBytes(StandardCharsets.UTF_8)); }
+        System.out.println("Geschreven: " + out + " (" + Files.size(out) / 1024 + " kB)");
+    }
+
+    /** "3.2", "3,2 m", "3.2m", "7.5 t", "3500 kg", 12'6" → getal in m of t; null = onbekend of geen ("none", "default"). */
+    static Double restrictionValue(String raw, String kind) {
+        String s = raw.trim().toLowerCase(Locale.ROOT).replace(',', '.');
+        if (s.isEmpty() || s.matches("none|default|below_default|no_sign|no_indications|unsigned|signals|.*;.*")) return null;
+        try {
+            java.util.regex.Matcher ft = java.util.regex.Pattern.compile("^([0-9]+)'\\s*([0-9]+([.][0-9]+)?)?\"?$").matcher(s);
+            if (ft.matches()) return Integer.parseInt(ft.group(1)) * 0.3048 + (ft.group(2) == null ? 0 : Double.parseDouble(ft.group(2)) * 0.0254);
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("^([0-9]+([.][0-9]+)?)\\s*(m|t|kg|st)?$").matcher(s);
+            if (!m.matches()) return null;
+            double v = Double.parseDouble(m.group(1));
+            if ("kg".equals(m.group(3))) v /= 1000.0;
+            boolean weight = kind.equals("w") || kind.equals("a");
+            if (weight ? (v < 0.5 || v > 100) : (v < 1.0 || v > 30)) return null; // onzin
+            return v;
+        } catch (NumberFormatException e) { return null; }
     }
 
     // ---------------- ophalen ----------------
