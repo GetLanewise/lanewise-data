@@ -56,3 +56,11 @@ jobs:
         run: |
           gh release view wegen >/dev/null 2>&1 || gh release create wegen --title "Wegenkaart (maximumsnelheden)" --notes "Wekelijks bijgewerkt uit OpenStreetMap (© OpenStreetMap-bijdragers, ODbL). Gebruikt door de Flitsapp."
           gh release upload wegen osm-nl-wegen.bin.gz osm-nl-overwegen.json.gz --clobber
+
+      - name: Matrixborden (NDW, CC0) - aparte release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          java tools/FetchMsi.java ndw-msi-locaties.json.gz
+          gh release view matrixborden >/dev/null 2>&1 || gh release create matrixborden --title "Matrixborden (locaties)" --notes "Locaties van de matrixborden boven de snelwegen, wekelijks uit de NDW-shapefile (open data, CC0). Gebruikt door Lanewise om te zeggen welke rijstrook dicht is."
+          gh release upload matrixborden ndw-msi-locaties.json.gz --clobber
