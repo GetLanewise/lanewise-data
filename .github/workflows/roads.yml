@@ -70,3 +70,11 @@ jobs:
           java tools/FetchMsi.java ndw-msi-locaties.json.gz
           gh release view matrixborden >/dev/null 2>&1 || gh release create matrixborden --title "Matrixborden (locaties)" --notes "Locaties van de matrixborden boven de snelwegen, wekelijks uit de NDW-shapefile (open data, CC0). Gebruikt door Lanewise om te zeggen welke rijstrook dicht is."
           gh release upload matrixborden ndw-msi-locaties.json.gz --clobber
+
+      - name: Heffingsnetwerk vrachtwagenheffing (Rijkswaterstaat, CC0) - aparte release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          java -Xmx3g tools/FetchTollNetwork.java rws-heffingsnetwerk.json.gz
+          gh release view heffing >/dev/null 2>&1 || gh release create heffing --title "Vrachtwagenheffing (heffingsnetwerk)" --notes "Wegvakken van het heffingsnetwerk uit de Wegkenmerkendatabase van Rijkswaterstaat (open data, CC0), wekelijks. Gebruikt door Lanewise."
+          gh release upload heffing rws-heffingsnetwerk.json.gz --clobber
