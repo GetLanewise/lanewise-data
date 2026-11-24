@@ -79,10 +79,10 @@ jobs:
           gh release view heffing >/dev/null 2>&1 || gh release create heffing --title "Vrachtwagenheffing (heffingsnetwerk)" --notes "Wegvakken van het heffingsnetwerk uit de Wegkenmerkendatabase van Rijkswaterstaat (open data, CC0), wekelijks. Gebruikt door Lanewise."
           gh release upload heffing rws-heffingsnetwerk.json.gz --clobber
 
-      - name: Parkeergarages en -terreinen (RDW, CC0) - aparte release
+      - name: Betaald parkeren aan de weg (RDW, CC0) - aparte release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          java tools/FetchParking.java rdw-parkeren.json.gz
-          gh release view parkeren >/dev/null 2>&1 || gh release create parkeren --title "Parkeren (garages en terreinen)" --notes "Parkeergarages en -terreinen met capaciteit, laadpunten en maximale hoogte, uit RDW Open Data Parkeren (CC0), wekelijks. Gebruikt door Lanewise."
-          gh release upload parkeren rdw-parkeren.json.gz --clobber
+          java tools/FetchStreetParking.java betaald-parkeren.json.gz
+          gh release view parkeren >/dev/null 2>&1 || gh release create parkeren --title "Parkeren aan de weg" --notes "Betaald-parkeergebieden met gemeente, betaaltijden en tarieven, uit RDW Open Data Parkeren (CC0), wekelijks. Gebruikt door Lanewise."
+          gh release upload parkeren betaald-parkeren.json.gz --clobber
