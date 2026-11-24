@@ -3,7 +3,7 @@
 "source":"osm",
 "attribution":"© OpenStreetMap-bijdragers",
 "license":"ODbL-1.0",
-"generatedAt":1795422219009,
+"generatedAt":1795494279042,
 "count":897,
 "cameras":[
 {"id":"osm:node/42116879","lat":50.9919777,"lon":5.8075297,"type":"SPEED","maxSpeed":80,"direction":235.0,"roadAxis":80.3,"travel":260.3,"updatedAt":1747318515000},
@@ -196,7 +196,7 @@
 {"id":"osm:node/4254978941","lat":52.2563687,"lon":4.5674019,"type":"SPEED","maxSpeed":50,"direction":280.0,"roadAxis":127.5,"updatedAt":1736109983000},
 {"id":"osm:node/4303731337","lat":52.1344176,"lon":4.5261714,"type":"SPEED","maxSpeed":70,"roadAxis":118.2,"travel":118.2,"updatedAt":1652771562000},
 {"id":"osm:node/4314126696","lat":52.5035028,"lon":6.073933,"type":"SPEED","maxSpeed":70,"direction":95.0,"roadAxis":126.3,"travel":306.3,"updatedAt":1779878284000},
-{"id":"osm:node/4349643622","lat":52.931336,"lon":6.7596138,"type":"SPEED","maxSpeed":80,"direction":105.0,"roadAxis":115.9,"updatedAt":1737967824000},
+{"id":"osm:node/4349643622","lat":52.931336,"lon":6.7596138,"type":"SPEED","maxSpeed":80,"direction":105.0,"roadAxis":115.8,"updatedAt":1737967824000},
 {"id":"osm:node/4387206464","lat":52.0130604,"lon":4.1946854,"type":"SPEED","maxSpeed":60,"direction":305.0,"roadAxis":143.8,"updatedAt":1737975402000},
 {"id":"osm:node/4495234360","lat":52.128167,"lon":5.0157572,"type":"SPEED","maxSpeed":100,"maxSpeedSrc":"road","roadAxis":137.2,"travel":317.2,"updatedAt":1712240516000},
 {"id":"osm:node/4495234361","lat":52.1281453,"lon":5.0157145,"type":"SPEED","maxSpeed":100,"maxSpeedSrc":"road","roadAxis":137.2,"travel":317.2,"updatedAt":1712240516000},
