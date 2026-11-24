@@ -65,8 +65,23 @@ public class FetchParking {
         pool.awaitTermination(30, java.util.concurrent.TimeUnit.MINUTES);
         pos.putAll(extra);
         System.out.println("Aangevuld uit NPR: " + extra.size() + " van " + missing.size());
+        // Plausibiliteit: de naam eindigt meestal op "(Plaats)". Ligt een plek > 15 km van het midden
+        // (mediaan) van de andere plekken in die plaats, dan klopt de RDW-positie niet (gezien: VUmc
+        // Amsterdam met de coördinaten van een garage in Utrecht). Die plek laten we weg.
+        Map<String, List<double[]>> perCity = new HashMap<>();
+        for (var s : specs) {
+            String key = s.get("areamanagerid") + "|" + s.get("areaid");
+            double[] p = pos.get(key); String city = city(names.get(uuid.getOrDefault(key, "")));
+            if (p != null && city != null) perCity.computeIfAbsent(city, k -> new ArrayList<>()).add(p);
+        }
+        Map<String, double[]> cityMid = new HashMap<>();
+        perCity.forEach((c, l) -> { if (l.size() >= 3) cityMid.put(c, new double[]{median(l, 0), median(l, 1)}); });
+        int cFar = 0;
         for (var s : specs) {
             if (ended(s.get("enddatespecifications"))) { cEnded++; continue; }
+            String k0 = s.get("areamanagerid") + "|" + s.get("areaid");
+            double[] p0 = pos.get(k0); double[] mid = cityMid.get(city(names.get(uuid.getOrDefault(k0, ""))));
+            if (p0 != null && mid != null && km(p0, mid) > 15) { cFar++; continue; }
             String key = s.get("areamanagerid") + "|" + s.get("areaid");
             if (!seen.add(key)) continue;
             double[] p = pos.get(key);
@@ -83,7 +98,7 @@ public class FetchParking {
                     name.replace("\\", "").replace("\"", "'"), p[0], p[1], cap,
                     ev > 0 ? ",\"ev\":" + ev : "", h >= 150 && h <= 600 ? String.format(Locale.ROOT, ",\"h\":%.2f", h / 100.0) : ""));
         }
-        System.out.println("Parkeren: " + specs.size() + " specificaties, " + pos.size() + " locaties, " + names.size() + " namen -> " + n + " plekken (" + noName + " zonder naam, " + cEnded + " beëindigd, " + cNoPos + " zonder plek, " + cStraat + " straat, " + cCap + " zonder capaciteit)");
+        System.out.println("Parkeren: " + specs.size() + " specificaties, " + pos.size() + " locaties, " + names.size() + " namen -> " + n + " plekken (" + noName + " zonder naam, " + cEnded + " beëindigd, " + cNoPos + " zonder plek, " + cStraat + " straat, " + cCap + " zonder capaciteit, " + cFar + " ver van eigen plaats)");
         if (n < 500) { System.err.println("FOUT: te weinig parkeerplekken (" + n + "), bestand blijft staan"); System.exit(1); }
         String out = "{\"format\":1,\"source\":\"rdw-parkeren\",\"license\":\"CC0-1.0\",\"attribution\":\"RDW Open Data Parkeren\",\"generatedAt\":"
                 + now + ",\"count\":" + n + ",\"items\":[\n" + sb + "\n]}";
@@ -91,6 +106,22 @@ public class FetchParking {
         System.out.println("Geschreven: " + a[0] + " (" + Files.size(Path.of(a[0])) / 1024 + " kB)");
         String summary = System.getenv("GITHUB_STEP_SUMMARY");
         if (summary != null) Files.writeString(Path.of(summary), "### Parkeren\n\n" + n + " garages en terreinen\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+    }
+
+    static String city(String name) {
+        if (name == null) return null;
+        int a = name.lastIndexOf('('), b = name.lastIndexOf(')');
+        return a >= 0 && b > a ? name.substring(a + 1, b).trim().toLowerCase(Locale.ROOT) : null;
+    }
+
+    static double median(List<double[]> l, int i) {
+        double[] v = l.stream().mapToDouble(p -> p[i]).sorted().toArray();
+        return v[v.length / 2];
+    }
+
+    static double km(double[] a, double[] b) {
+        double dy = (a[0] - b[0]) * 111.2, dx = (a[1] - b[1]) * 111.2 * Math.cos(Math.toRadians(a[0]));
+        return Math.sqrt(dx * dx + dy * dy);
     }
 
     static boolean ended(String d) {
